@@ -41,7 +41,7 @@ func Main() error {
 		kubectlPipes = append(kubectlPipes, kubectlPipe)
 		processedResources += 1
 		fmt.Fprintf(os.Stderr, "\rGetting resources (%d/%d)", processedResources, totalResources)
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	fmt.Fprintln(os.Stderr, "")
