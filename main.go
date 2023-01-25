@@ -10,16 +10,22 @@ import (
 	"github.com/bitfield/script"
 )
 
-type KubectlExecution struct {
-	pipe *script.Pipe
-	resourceApiName string
+// forcePipeOutputToSterr helps to write a pipe's output to stderr when it
+// returns a non-zero exit code.
+func forcePipeOutputToSterr(pipe *script.Pipe) {
+	// Need to discard the error on the pipe otherwise all
+	// attemps to get the output are no-ops
+	pipe.SetError(nil)
+	// Show the output that caused the error
+	pipe.WithStdout(os.Stderr).Stdout()
 }
 
 func Main() error {
 	fmt.Fprintf(os.Stderr, "Getting all kubernetes api resources...")
-	resourceKinds, err := script.Exec("kubectl api-resources --verbs=list --namespaced -o name").
-		RejectRegexp(regexp.MustCompile(`^events$`)).Slice()
+	apiResourcesPipe := script.Exec("kubectl api-resources --verbs=list --namespaced -o name")
+	resourceKinds, err := apiResourcesPipe.RejectRegexp(regexp.MustCompile(`^events$`)).Slice()
 	if err != nil {
+		forcePipeOutputToSterr(apiResourcesPipe)
 		return fmt.Errorf("Could not get api resources: %w", err)
 	}
 
@@ -30,7 +36,8 @@ func Main() error {
 
 	var kubectlPipes []*script.Pipe
 	for _, resourceKind := range resourceKinds {
-		kubectlPipe := script.Exec("kubectl get --show-kind --ignore-not-found -o name " + resourceKind).Reject("Warning:")
+		kubectlPipe := script.Exec("kubectl get --show-kind --ignore-not-found -o name " + resourceKind).
+			Reject("Warning:")
 		kubectlPipes = append(kubectlPipes, kubectlPipe)
 		processedResources += 1
 		fmt.Fprintf(os.Stderr, "\rGetting resources (%d/%d)", processedResources, totalResources)
@@ -45,7 +52,8 @@ func Main() error {
 	for _, kubectlPipe := range kubectlPipes {
 		resourcesFound, err := kubectlPipe.Slice()
 		if err != nil {
-			return fmt.Errorf("could not get resources: %s", strings.Join(resourcesFound, "\n") + err.Error())
+			forcePipeOutputToSterr(kubectlPipe)
+			return fmt.Errorf("could not get resources: %w", err)
 		}
 		processedResources += 1
 		allResourcesFound = append(allResourcesFound, resourcesFound...)
@@ -64,7 +72,7 @@ func Main() error {
 func main() {
 	err := Main()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "\n%s\n", err)
+		fmt.Fprintf(os.Stderr, "%s\n", err)
 		os.Exit(1)
 	}
 }
