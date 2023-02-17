@@ -56,10 +56,9 @@ func (g *GetAllPlugin) GetAll() ([]string, error) {
 	g.writeStderr(" found %d.\n", totalResources)
 
 	processedResources := 0
-	lastLineLen := 0
 	var kubectlPipes []*script.Pipe
-	clearLastResourceLine := func() {
-		g.writeStderr("\r%s", strings.Repeat(" ", lastLineLen))
+	clearConsoleLine := func() {
+		g.writeStderr("\033[2K") // clear entire line
 	}
 	for _, resourceKind := range resourceKinds {
 		kubectlGet := fmt.Sprintf("kubectl get --show-kind --ignore-not-found -o name %q", resourceKind)
@@ -67,16 +66,15 @@ func (g *GetAllPlugin) GetAll() ([]string, error) {
 		kubectlPipes = append(kubectlPipes, kubectlPipe)
 		processedResources += 1
 		if processedResources > 1 {
-			clearLastResourceLine()
+			clearConsoleLine()
 			g.writeStderr("\033[F") // move cursor to start of previous line
 		}
 		g.writeStderr("Getting resources (%d/%d)\n", processedResources, totalResources)
 		g.writeStderr("%s", resourceKind)
-		lastLineLen = len(resourceKind)
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	g.writeStderr("\n")
+	clearConsoleLine()
 
 	processedResources = 0
 

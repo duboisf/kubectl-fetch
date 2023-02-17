@@ -43,9 +43,8 @@ func TestPlugin_GetAll(t *testing.T) {
 		expectedStderr := strings.Join([]string{
 			"Getting all kubernetes api resources... found 2.",
 			"Getting resources (1/2)",
-			"deployment\r          \033[FGetting resources (2/2)",
-			"services", // must sort the resource kinds
-			"\rWaiting for results (1/2)\rWaiting for results (2/2)",
+			"deployment\033[2K\033[FGetting resources (2/2)", // resource kinds are sorted
+			"services\033[2K\rWaiting for results (1/2)\rWaiting for results (2/2)",
 			"", // extra newline
 		}, "\n")
 		actualStderr := stderrWriter.String()
