@@ -1,98 +1,82 @@
 package cmd
 
 import (
+	"bufio"
+	"context"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
-	"regexp"
-	"sort"
 	"strings"
+	"sync"
 	"time"
-
-	"github.com/bitfield/script"
 )
 
-// getPipeError helps returns the output of a pipe that has an error
-func getPipeError(pipe *script.Pipe) error {
-	// Need to discard the error on the pipe otherwise all
-	// attemps to get the output are no-ops
-	pipe.SetError(nil)
-	output, _ := pipe.String()
-	return fmt.Errorf("%s", output)
+// Fetcher is an interface for cmd.Plugin
+type Fetcher interface {
+	Fetch(ctx context.Context) ([]string, error)
 }
 
-type Exec func(cmdLine string) *script.Pipe
-
-type GetAllPlugin struct {
-	Exec   Exec
-	Stderr io.Writer
+// Starter is an interface for terminal.UI
+type Starter interface {
+	Start(ctx context.Context, wg *sync.WaitGroup)
 }
 
-// New returns a new GetAllPlugin ready to be used
-func New() *GetAllPlugin {
-	return &GetAllPlugin{
-		Exec:   script.Exec,
-		Stderr: os.Stderr,
-	}
+type Stdout interface {
+	io.Writer
+	Stat() (fs.FileInfo, error)
 }
 
-func (g *GetAllPlugin) writeStderr(format string, a ...any) {
-	fmt.Fprintf(g.Stderr, format, a...)
+type Cmd struct {
+	plugin        Fetcher
+	stderr        io.Writer
+	stdout        Stdout
+	ui            Starter
+	UIStopTimeout time.Duration
 }
 
-func (g *GetAllPlugin) GetAll() ([]string, error) {
-	g.writeStderr("Getting all kubernetes api resources...")
-	apiResourcesPipe := g.Exec("kubectl api-resources --verbs=list --namespaced -o name")
-	eventsRegex := regexp.MustCompile(`^events(\.events\.k8s.io)?$`)
-	resourceKinds, err := apiResourcesPipe.RejectRegexp(eventsRegex).Slice()
+func NewCmd(plugin Fetcher, stdout Stdout, stderr io.Writer, ui Starter) (*Cmd, error) {
+	return &Cmd{
+		plugin: plugin,
+		stderr: stderr,
+		stdout: stdout,
+		ui:     ui,
+		UIStopTimeout: 500 * time.Millisecond,
+	}, nil
+}
+
+func (c *Cmd) Run(ctx context.Context) error {
+	wg := &sync.WaitGroup{}
+	fileInfo, err := c.stdout.Stat()
 	if err != nil {
-		g.writeStderr("\n")
-		errorMsg := strings.Join(resourceKinds, "\n")
-		return nil, fmt.Errorf("could not get api resources:\n%s", errorMsg)
+		return err
 	}
-
-	sort.Strings(resourceKinds)
-	totalResources := len(resourceKinds)
-	g.writeStderr(" found %d.\n", totalResources)
-
-	processedResources := 0
-	var kubectlPipes []*script.Pipe
-	clearConsoleLine := func() {
-		g.writeStderr("\033[2K") // clear entire line
+	// Only start UI if we are connected to a TTY
+	if fileInfo.Mode()&os.ModeCharDevice != 0 {
+		wg.Add(1)
+		go c.ui.Start(ctx, wg)
 	}
-	for _, resourceKind := range resourceKinds {
-		kubectlGet := fmt.Sprintf("kubectl get --show-kind --ignore-not-found -o name %q", resourceKind)
-		kubectlPipe := g.Exec(kubectlGet).Reject("Warning:")
-		kubectlPipes = append(kubectlPipes, kubectlPipe)
-		processedResources += 1
-		if processedResources > 1 {
-			clearConsoleLine()
-			g.writeStderr("\033[F") // move cursor to start of previous line
-		}
-		g.writeStderr("Getting resources (%d/%d)\n", processedResources, totalResources)
-		g.writeStderr("%s", resourceKind)
-		time.Sleep(50 * time.Millisecond)
+	resources, err := c.plugin.Fetch(ctx)
+	uiStoped := make(chan struct{})
+	go func() {
+		defer close(uiStoped)
+		wg.Wait()
+	}()
+	uiStopCtx, cancel := context.WithTimeout(context.Background(), c.UIStopTimeout)
+	defer cancel()
+	select {
+	case <-uiStoped:
+	case <-uiStopCtx.Done():
+		return uiStopCtx.Err()
 	}
-
-	clearConsoleLine()
-
-	processedResources = 0
-
-	var allResourcesFound []string
-	for _, kubectlPipe := range kubectlPipes {
-		resourcesFound, err := kubectlPipe.Slice()
-		if err != nil {
-			return nil, fmt.Errorf("could not get resources: %w", getPipeError(kubectlPipe))
-		}
-		processedResources += 1
-		allResourcesFound = append(allResourcesFound, resourcesFound...)
-		g.writeStderr("\rWaiting for results (%d/%d)", processedResources, totalResources)
+	if err != nil {
+		return err
 	}
-
-	// Write a newline since we were not writing a newline for our progress message
-	g.writeStderr("\n")
-
-	sort.Strings(allResourcesFound)
-
-	return allResourcesFound, nil
+	if len(resources) == 0 {
+		fmt.Fprintln(c.stderr, "No resources found.")
+		return nil
+	}
+	bufferedStdout := bufio.NewWriter(c.stdout)
+	bufferedStdout.WriteString(strings.Join(resources, "\n") + "\n")
+	return bufferedStdout.Flush()
 }

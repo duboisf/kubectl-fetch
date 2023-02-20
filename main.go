@@ -1,23 +1,46 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
-	"strings"
+	"os/exec"
+	"os/signal"
+	"syscall"
 
-	"github.com/duboisf/kubectl-getall/internal/cmd"
+	"github.com/duboisf/kubectl-fetch/internal/cmd"
+	"github.com/duboisf/kubectl-fetch/internal/pkg/kubectl"
+	"github.com/duboisf/kubectl-fetch/internal/pkg/terminal"
 )
 
 func main() {
-	kubectlPlugin := cmd.New()
-	resources, err := kubectlPlugin.GetAll()
+	err := Main()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %s\n", err)
+		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
-	if len(resources) == 0 {
-		fmt.Fprintf(os.Stderr, "No resources found!\n")
-	} else {
-		fmt.Fprintln(os.Stdout, strings.Join(resources, "\n"))
+}
+
+func Main() error {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
+	defer cancel()
+
+	tput := terminal.NewTPut(exec.Command)
+
+	progressBar := terminal.NewProgressBar(tput)
+	tui := terminal.NewUI(progressBar, tput, os.Stderr)
+	kubeClient := kubectl.New(exec.CommandContext)
+	opts, err := cmd.GetOptions(os.Args[1:])
+	if err != nil {
+		return err
 	}
+	plugin, err := cmd.NewPlugin(kubeClient, opts, tui)
+	if err != nil {
+		return err
+	}
+	cmd, err := cmd.NewCmd(plugin, os.Stdout, os.Stderr, tui)
+	if err != nil {
+		return err
+	}
+	return cmd.Run(ctx)
 }
