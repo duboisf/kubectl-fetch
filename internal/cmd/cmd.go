@@ -37,10 +37,10 @@ type Cmd struct {
 
 func NewCmd(plugin Fetcher, stdout Stdout, stderr io.Writer, ui Starter) (*Cmd, error) {
 	return &Cmd{
-		plugin: plugin,
-		stderr: stderr,
-		stdout: stdout,
-		ui:     ui,
+		plugin:        plugin,
+		stderr:        stderr,
+		stdout:        stdout,
+		ui:            ui,
 		UIStopTimeout: 500 * time.Millisecond,
 	}, nil
 }
@@ -51,24 +51,16 @@ func (c *Cmd) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	uiCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	// Only start UI if we are connected to a TTY
 	if fileInfo.Mode()&os.ModeCharDevice != 0 {
 		wg.Add(1)
-		go c.ui.Start(ctx, wg)
+		go c.ui.Start(uiCtx, wg)
 	}
 	resources, err := c.plugin.Fetch(ctx)
-	uiStoped := make(chan struct{})
-	go func() {
-		defer close(uiStoped)
-		wg.Wait()
-	}()
-	uiStopCtx, cancel := context.WithTimeout(context.Background(), c.UIStopTimeout)
-	defer cancel()
-	select {
-	case <-uiStoped:
-	case <-uiStopCtx.Done():
-		return uiStopCtx.Err()
-	}
+	cancel()
+	c.waitForUI(wg)
 	if err != nil {
 		return err
 	}
@@ -79,4 +71,13 @@ func (c *Cmd) Run(ctx context.Context) error {
 	bufferedStdout := bufio.NewWriter(c.stdout)
 	bufferedStdout.WriteString(strings.Join(resources, "\n") + "\n")
 	return bufferedStdout.Flush()
+}
+
+func (c *Cmd) waitForUI(wg *sync.WaitGroup) {
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		wg.Wait()
+	}()
+	<-stopped
 }

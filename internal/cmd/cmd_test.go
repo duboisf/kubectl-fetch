@@ -92,20 +92,6 @@ func TestCmd_Run(t *testing.T) {
 		assert.Contains(t, stdout.builder.String(), "deployment/foo")
 	})
 
-	t.Run("returns after a timeout period if the ui doesn't close", func(t *testing.T) {
-		plugin := &mockFetcher{}
-		ui := &mockStarter{ungracefulShutdown: true}
-		var stderr strings.Builder
-		stdout := &mockStdout{}
-		stdout.fileInfo.mode = fs.ModeCharDevice
-		cmd, err := cmd.NewCmd(plugin, stdout, &stderr, ui)
-		assert.Nil(t, err)
-		cmd.UIStopTimeout = 1 * time.Millisecond
-		err = cmd.Run(context.Background())
-		assert.NotNil(t, err)
-		assert.Contains(t, err.Error(), "context deadline exceeded")
-	})
-
 	t.Run("displays a message to stderr when no resources were found", func(t *testing.T) {
 		plugin := &mockFetcher{resources: nil}
 		ui := &mockStarter{}

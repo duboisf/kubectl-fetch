@@ -35,10 +35,8 @@ func GetOptions(commandLineArgs []string) (*Options, error) {
 		commandLine.PrintDefaults()
 	}
 
-	err := commandLine.Parse(commandLineArgs)
-	if err != nil {
-		return nil, fmt.Errorf("could not parse command line args: %w", err)
-	}
+	commandLine.Parse(commandLineArgs)
+
 	if commandLine.NArg() > 1 {
 		commandLine.Usage()
 		return nil, errors.New("too many args supplied")

@@ -38,7 +38,7 @@ func (t *TPut[C]) Query(capnames ...string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("tput returned an error: %w", err)
 	}
-	return strings.TrimSpace(string( stdout )), nil
+	return strings.TrimSpace(string(stdout)), nil
 }
 
 func (t *TPut[C]) QueryInt(capname string) (int, error) {

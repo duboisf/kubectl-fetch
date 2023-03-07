@@ -87,7 +87,3 @@ func (p *ProgressBar) SetWidth(width int) {
 func (p *ProgressBar) String() string {
 	return p.progressBar
 }
-
-func (p *ProgressBar) Width() int {
-	return p.width
-}

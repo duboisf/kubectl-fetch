@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/duboisf/kubectl-fetch/internal/cmd"
 	"github.com/duboisf/kubectl-fetch/internal/pkg/kubectl"
@@ -28,7 +29,8 @@ func Main() error {
 	tput := terminal.NewTPut(exec.Command)
 
 	progressBar := terminal.NewProgressBar(tput)
-	tui := terminal.NewUI(progressBar, tput, os.Stderr)
+	spinner := terminal.NewSpinner(100*time.Millisecond)
+	tui := terminal.NewUI(progressBar, spinner, tput, os.Stderr)
 	kubeClient := kubectl.New(exec.CommandContext)
 	opts, err := cmd.GetOptions(os.Args[1:])
 	if err != nil {

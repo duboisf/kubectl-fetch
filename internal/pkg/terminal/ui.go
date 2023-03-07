@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 )
 
 type TermInfo interface {
@@ -32,15 +31,17 @@ type UI struct {
 	getResourcesUpdates chan *GetResourcesUpdate
 	nbExecs, nbTputs    int
 	progressBar         PBar
+	spinner             *Spinner
 	termInfo            TermInfo
 	termInfoCache       map[string]string
 	totalKinds          chan int
 	writer              *bufio.Writer
 }
 
-func NewUI(progressBar PBar, termInfo TermInfo, writer io.Writer) *UI {
+func NewUI(progressBar PBar, spinner *Spinner, termInfo TermInfo, writer io.Writer) *UI {
 	return &UI{
 		progressBar:   progressBar,
+		spinner:       spinner,
 		termInfo:      termInfo,
 		termInfoCache: make(map[string]string),
 		totalKinds:    make(chan int, 1),
@@ -48,23 +49,11 @@ func NewUI(progressBar PBar, termInfo TermInfo, writer io.Writer) *UI {
 	}
 }
 
-func (u *UI) getTermSize() (x, y int, err error) {
-	x, err = u.termInfo.QueryInt("lines")
-	if err != nil {
-		return 0, 0, err
-	}
-	y, err = u.termInfo.QueryInt("cols")
-	if err != nil {
-		return 0, 0, err
-	}
-	return
-}
-
 func (u *UI) queryTerminfo(capname string) string {
 	output, found := u.termInfoCache[capname]
 	if !found {
-		u.nbTputs++
 		var err error
+		u.nbTputs++
 		output, err = u.termInfo.Query(capname)
 		if err != nil {
 			return ""
@@ -75,7 +64,7 @@ func (u *UI) queryTerminfo(capname string) string {
 }
 
 func (u *UI) tput(capname string) {
-	u.Print(u.queryTerminfo(capname))
+	u.print(u.queryTerminfo(capname))
 }
 
 // hideCursor uses tput to hide the cursor. It also starts a go routine to
@@ -96,37 +85,14 @@ func (u *UI) showCursor() {
 	u.tput("cvvis")
 }
 
-func (u *UI) Print(a ...any) {
+func (u *UI) print(a ...any) {
 	fmt.Fprint(u.writer, a...)
 }
 
-// Printf formats according to a format specifier and writes to standard output\.
+// printf formats according to a format specifier and writes to standard output\.
 // It returns the number of bytes written and any write error encountered\.
-func (u *UI) Printf(template string, args ...interface{}) {
+func (u *UI) printf(template string, args ...interface{}) {
 	fmt.Fprintf(u.writer, template, args...)
-}
-
-func (u *UI) Println(a ...interface{}) {
-	fmt.Fprintln(u.writer, a...)
-}
-
-func (u *UI) moveCursorUp(lines int) {
-	for i := 0; i < lines; i++ {
-		u.tput("cuu1")
-	}
-}
-
-func (u *UI) eraseCurrentLine() {
-	u.Print("\r" + u.queryTerminfo("el"))
-}
-
-func (u *UI) eraseLastLines(count int) {
-	u.Print("\r")
-	for i := 0; i < count; i++ {
-		u.eraseCurrentLine()
-		u.moveCursorUp(1)
-	}
-	u.eraseCurrentLine()
 }
 
 func (u *UI) flush() error {
@@ -153,7 +119,7 @@ func (u *UI) Start(ctx context.Context, wg *sync.WaitGroup) {
 	// }
 	// windowSizeChange := make(chan os.Signal, 1)
 	// signal.Notify(windowSizeChange, syscall.SIGWINCH)
-	u.Printf("Discovering kinds...")
+	u.printf("Discovering kinds...")
 	u.flush()
 	var totalKinds int
 	select {
@@ -161,10 +127,9 @@ func (u *UI) Start(ctx context.Context, wg *sync.WaitGroup) {
 		return
 	case totalKinds = <-u.totalKinds:
 	}
-	u.Printf(" found %d.\n", totalKinds)
+	u.printf(" found %d.\n", totalKinds)
 	u.progressBar.SetWidth(10)
 	u.progressBar.SetTotalIncrements(totalKinds)
-	spinner := NewSpinner(100 * time.Millisecond)
 	var processedKinds int
 	var totalResourcesFound int
 	var lastProcessedKind string
@@ -176,21 +141,15 @@ func (u *UI) Start(ctx context.Context, wg *sync.WaitGroup) {
 		progressLines = []string{
 			fmt.Sprintf("Discovering kinds... found %d.\n", totalKinds),
 			fmt.Sprintf("\r%s Fetched kinds: %s %*d/%d\n",
-				spinner, u.progressBar.String(), formatWidth, processedKinds, totalKinds),
+				u.spinner, u.progressBar.String(), formatWidth, processedKinds, totalKinds),
 			fmt.Sprintf("Getting %s\n", lastProcessedKind),
 			fmt.Sprintf("Total resources found: %4d", totalResourcesFound),
 		}
-		u.Print(strings.Join(progressLines, eraseLine))
+		u.print(strings.Join(progressLines, eraseLine))
 		u.flush()
 		select {
 		case <-ctx.Done():
 			return
-		// case <-windowSizeChange:
-		// 	newCols, err := u.termInfo.QueryInt("cols")
-		// 	if err == nil {
-		// 		cols = newCols
-		// 		// progressBar.SetWidth(cols - 10)
-		// 	}
 		case getResourcesUpdate, more := <-u.getResourcesUpdates:
 			if !more {
 				return
@@ -199,8 +158,8 @@ func (u *UI) Start(ctx context.Context, wg *sync.WaitGroup) {
 			lastProcessedKind = getResourcesUpdate.Kind
 			processedKinds++
 			totalResourcesFound += getResourcesUpdate.Resources
-		case <-spinner.Tick:
-			spinner.Spin()
+		case <-u.spinner.Tick:
+			u.spinner.Spin()
 		}
 	}
 }
