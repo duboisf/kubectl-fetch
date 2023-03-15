@@ -6,14 +6,6 @@ import (
 	"github.com/duboisf/kubectl-fetch/internal/pkg/terminal"
 )
 
-type mockTermInfoQueryer struct {
-
-}
-
-func (m *mockTermInfoQueryer) Query(capnames ...string) (string, error) {
-  return "", nil
-}
-
 func TestProgressBar_String(t *testing.T) {
 	testCases := []struct {
 		width           int
@@ -31,7 +23,7 @@ func TestProgressBar_String(t *testing.T) {
 		{40, 243, 88, "██████████████▍                         "},
 	}
 	for i, tc := range testCases {
-		pb := terminal.NewProgressBar(&mockTermInfoQueryer{})
+		pb := terminal.NewProgressBar("", "", "")
 		pb.SetWidth(tc.width)
 		pb.SetTotalIncrements(tc.totalIncrements)
 		pb.Increment(tc.increments)
@@ -42,7 +34,7 @@ func TestProgressBar_String(t *testing.T) {
 }
 
 func TestProgressBar_Increment(t *testing.T) {
-	pb := terminal.NewProgressBar(&mockTermInfoQueryer{})
+	pb := terminal.NewProgressBar("", "", "")
 	pb.SetWidth(5)
 	pb.SetTotalIncrements(5)
 	pb.Increment(4)

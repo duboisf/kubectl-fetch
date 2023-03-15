@@ -12,10 +12,6 @@ var (
 	}
 )
 
-type TermInfoQueryer interface {
-	Query(capnames ...string) (string, error)
-}
-
 type ProgressBar struct {
 	increments      int
 	totalIncrements int
@@ -23,18 +19,13 @@ type ProgressBar struct {
 	progressBar     string
 	barColor        string
 	resetColor      string
-	termInfoQueryer TermInfoQueryer
 }
 
-func NewProgressBar(termInfoQueryer TermInfoQueryer) *ProgressBar {
-	foregroundColor, _ := termInfoQueryer.Query("setaf 4")
-	backgroundColor, _ := termInfoQueryer.Query("setab 0")
+func NewProgressBar(foregroundColor, backgroundColor, resetColor string) *ProgressBar {
 	progressBarColor := foregroundColor + backgroundColor
-	resetColor, _ := termInfoQueryer.Query("sgr0")
 	pb := &ProgressBar{
 		barColor:        progressBarColor,
 		resetColor:      resetColor,
-		termInfoQueryer: termInfoQueryer,
 		totalIncrements: 1,
 		width:           5,
 	}

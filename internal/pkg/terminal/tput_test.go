@@ -36,7 +36,7 @@ type tputFixture struct {
 	cmd        *mockCmd
 }
 
-func (t *tputFixture) newCommand(name string, args ...string) terminal.Cmd {
+func (t *tputFixture) newCommand(name string, args ...string) *mockCmd {
 	t.actualName = name
 	t.actualArgs = args
 	return t.cmd

@@ -28,7 +28,10 @@ func Main() error {
 
 	tput := terminal.NewTPut(exec.Command)
 
-	progressBar := terminal.NewProgressBar(tput)
+	foregroundColor, _ := tput.Query("setaf 4")
+	backgroundColor, _ := tput.Query("setab 0")
+	resetColor, _ := tput.Query("sgr0")
+	progressBar := terminal.NewProgressBar(foregroundColor, backgroundColor, resetColor)
 	spinner := terminal.NewSpinner(100*time.Millisecond)
 	tui := terminal.NewUI(progressBar, spinner, tput, os.Stderr)
 	kubeClient := kubectl.New(exec.CommandContext)
