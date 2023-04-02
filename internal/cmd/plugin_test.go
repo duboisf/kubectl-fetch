@@ -2,6 +2,7 @@ package cmd_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/duboisf/kubectl-fetch/internal/cmd"
@@ -42,6 +43,7 @@ func TestPlugin_Fetch(t *testing.T) {
 	t.Parallel()
 
 	t.Run("returns the list of all resources in a namespace", func(t *testing.T) {
+		// When
 		kubeClient := &mockKubeClient{}
 		kubeClient.listApiResources.output = []string{
 			// returns the list unsorted
@@ -59,9 +61,56 @@ func TestPlugin_Fetch(t *testing.T) {
 		ui.updates = make(chan *terminal.GetResourcesUpdate, len(kubeClient.listApiResources.output))
 		plugin, err := cmd.NewPlugin(kubeClient, opts, ui)
 		assert.Nil(t, err)
+
+		// When
 		resources, err := plugin.Fetch(context.Background())
+
+		// Then
 		assert.Nil(t, err)
 		expectedResources := []string{"deployment/foo", "service/bar", "service/baz"}
 		assert.SliceEquals(t, expectedResources, resources)
+	})
+
+	t.Run("returns an error if there's an error getting the list of api resources", func(t *testing.T) {
+		// Given
+		kubeClient := &mockKubeClient{}
+		kubeClient.listApiResources.err = fmt.Errorf("error getting api resources")
+		opts, err := cmd.GetOptions([]string{"(deployment|service)"})
+		assert.Nil(t, err)
+		ui := &mockUI{}
+		ui.updates = make(chan *terminal.GetResourcesUpdate, len(kubeClient.listApiResources.output))
+		plugin, err := cmd.NewPlugin(kubeClient, opts, ui)
+		assert.Nil(t, err)
+
+		// When
+		_, err = plugin.Fetch(context.Background())
+
+		// Then
+		assert.NotNil(t, err)
+	})
+
+	t.Run("returns an error if there's an error getting the list of resources for a kind", func(t *testing.T) {
+		// Given
+		kubeClient := &mockKubeClient{}
+		kubeClient.listApiResources.output = []string{
+			// returns the list unsorted
+			"service",
+			"deployment",
+			"configmap",
+		}
+		kubeClient.getResources.err = fmt.Errorf("error getting resources")
+		opts, err := cmd.GetOptions([]string{"(deployment|service)"})
+		assert.Nil(t, err)
+		ui := &mockUI{}
+		ui.updates = make(chan *terminal.GetResourcesUpdate, len(kubeClient.listApiResources.output))
+		plugin, err := cmd.NewPlugin(kubeClient, opts, ui)
+		assert.Nil(t, err)
+
+		// When
+		_, err = plugin.Fetch(context.Background())
+
+		// Then
+		assert.NotNil(t, err)
+		assert.Contains(t, err.Error(), "error getting resources")
 	})
 }

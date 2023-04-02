@@ -25,7 +25,7 @@ type KubeClient interface {
 type Plugin struct {
 	kubeClient KubeClient
 	options    *Options
-	ui        ProgressDisplayer
+	ui         ProgressDisplayer
 }
 
 type fetchResult struct {
@@ -44,7 +44,7 @@ func NewPlugin(kubeClient KubeClient, options *Options, tui ProgressDisplayer) (
 	return &Plugin{
 		kubeClient: kubeClient,
 		options:    options,
-		ui:        tui,
+		ui:         tui,
 	}, nil
 }
 

@@ -22,6 +22,7 @@ type Starter interface {
 	Start(ctx context.Context, wg *sync.WaitGroup)
 }
 
+// Stdout is an interface for os.Stdout
 type Stdout interface {
 	io.Writer
 	Stat() (fs.FileInfo, error)
